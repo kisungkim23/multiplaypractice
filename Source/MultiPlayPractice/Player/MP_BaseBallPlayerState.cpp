@@ -6,7 +6,9 @@
 #include "Net/UnrealNetwork.h"
 
 AMP_BaseBallPlayerState::AMP_BaseBallPlayerState()
-	: PlayerNameString(TEXT("None"))
+	: PlayerNameString(TEXT("None")),
+	PlayerGameState(EGameState::None),
+	CurrentGuessCount(0)
 {
 	bReplicates = true;
 }
@@ -17,6 +19,7 @@ void AMP_BaseBallPlayerState::GetLifetimeReplicatedProps(TArray<class FLifetimeP
 
 	DOREPLIFETIME(ThisClass, PlayerNameString);
 	DOREPLIFETIME(ThisClass, PlayerGameState);
+	DOREPLIFETIME(ThisClass, CurrentGuessCount);
 }
 
 void AMP_BaseBallPlayerState::SetPlayerReady()
@@ -38,4 +41,10 @@ void AMP_BaseBallPlayerState::SetEndPlay()
 EGameState AMP_BaseBallPlayerState::GetPlayerGameState() const
 {
 	return PlayerGameState;
+}
+
+FString AMP_BaseBallPlayerState::GetPlayerInfoString()
+{
+	FString PlayerInfoString = PlayerNameString + TEXT("(") + FString::FromInt(CurrentGuessCount) + TEXT(")");
+	return PlayerInfoString;
 }

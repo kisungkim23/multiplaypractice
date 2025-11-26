@@ -26,6 +26,8 @@ public:
 
 	EGameState GetPlayerGameState() const;
 
+	FString GetPlayerInfoString();
+
 public:
 	UPROPERTY(Replicated)
 	FString PlayerNameString;
@@ -33,4 +35,6 @@ public:
 	UPROPERTY(Replicated)
 	EGameState PlayerGameState;
 
+	UPROPERTY(Replicated)
+	int32 CurrentGuessCount;
 };

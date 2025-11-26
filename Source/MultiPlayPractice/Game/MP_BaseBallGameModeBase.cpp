@@ -40,13 +40,10 @@ FString AMP_BaseBallGameModeBase::GenerateSecretNumber()
 		Numbers.Add(i);
 	}
 
-	FMath::RandInit(FDateTime::Now().GetTicks());
-	Numbers = Numbers.FilterByPredicate([](int32 Num) { return Num > 0; });
-
 	FString Result;
 	for (int32 i = 0; i < 3; ++i)
 	{
-		int32 Index = FMath::RandRange(0, Numbers.Num() - 1);
+		const int32 Index = FMath::RandRange(0, Numbers.Num() - 1);
 		Result.Append(FString::FromInt(Numbers[Index]));
 		Numbers.RemoveAt(Index);
 	}
@@ -121,8 +118,6 @@ FString AMP_BaseBallGameModeBase::JudgeResult(const FString& InSecretNumberStrin
 void AMP_BaseBallGameModeBase::BeginPlay()
 {
 	Super::BeginPlay();
-
-	SecretNumberString = GenerateSecretNumber();
 }
 
 void AMP_BaseBallGameModeBase::PrintChatMessageString(AMP_BaseBallPlayerController* InChattingPlayerController, const FString& InChatMessageString)
@@ -140,22 +135,36 @@ void AMP_BaseBallGameModeBase::PrintChatMessageString(AMP_BaseBallPlayerControll
 	FString GuessNumberString = InChatMessageString.RightChop(Index);
 	if (MPGameStateBase->GetCurrentPlayer() == MPPlayerState && IsGuessNumberString(GuessNumberString) == true)
 	{
-		FString JudgeResultString = JudgeResult(SecretNumberString, GuessNumberString);
+		if (CurrentTurnIndex == 0)
+		{
+			CurrentGuessCount++;
+		}
+
+		FString PlayerSecretNumberString = SecretNumberStrings[InChattingPlayerController];
+		//여기에 String 체크
+		FString JudgeResultString = JudgeResult(PlayerSecretNumberString, GuessNumberString);
 		for (TActorIterator<AMP_BaseBallPlayerController> It(GetWorld()); It; ++It)
 		{
 			AMP_BaseBallPlayerController* MPPlayerController = *It;
 			if (IsValid(MPPlayerController) == true)
 			{
-				FString CombinedMessageString = InChatMessageString + TEXT(" -> ") + JudgeResultString;
+				FString CombinedMessageString = InChatMessageString + TEXT(" -> ") + JudgeResultString + FString::Printf(TEXT("  Count : %d"),MPPlayerState->CurrentGuessCount);
 				MPPlayerController->ClientRPCPrintChatMessageString(CombinedMessageString);
 			}
+			//AMP_BaseBallPlayerState* MPPlayerState = MPPlayerController->GetPlayerState<AMP_BaseBallPlayerState>();
 		}
 
 		int32 StrikeCount = FCString::Atoi(*JudgeResultString.Left(1));
-		JudgeGame(InChattingPlayerController, StrikeCount);
-		const int32 NumPlayers = AllPlayerControllers.Num();
-		CurrentTurnIndex = (CurrentTurnIndex + 1) % NumPlayers;
-		SetPlayerTurn(AllPlayerControllers[CurrentTurnIndex]->GetPlayerState<AMP_BaseBallPlayerState>());
+		if (!JudgeGame(InChattingPlayerController, StrikeCount))
+		{
+			const int32 NumPlayers = AllPlayerControllers.Num();
+			CurrentTurnIndex = (CurrentTurnIndex + 1) % NumPlayers;
+			SetPlayerTurn(AllPlayerControllers[CurrentTurnIndex]->GetPlayerState<AMP_BaseBallPlayerState>());
+		}
+		else
+		{
+			ResetGame();
+		}
 	}
 	else
 	{
@@ -173,7 +182,6 @@ void AMP_BaseBallGameModeBase::PrintChatMessageString(AMP_BaseBallPlayerControll
 
 void AMP_BaseBallGameModeBase::ResetGame()
 {
-	SecretNumberString = GenerateSecretNumber();
 	GetWorld()->GetTimerManager().ClearTimer(TurnCountHandler);
 	for (const auto& MPPlayerController : AllPlayerControllers)
 	{
@@ -191,50 +199,12 @@ void AMP_BaseBallGameModeBase::ResetGame()
 		MPPlayerState->SetEndPlay();
 		GetWorld()->GetTimerManager().ClearTimer(TurnCountHandler);
 		MPPlayerController->NotificationText = FText::FromString(TEXT("Connected to the game server."));
+		MPPlayerState->CurrentGuessCount = 0;
 	}
 }
 
-void AMP_BaseBallGameModeBase::JudgeGame(AMP_BaseBallPlayerController* InChattingPlayerController, int InStrikeCount)
+void AMP_BaseBallGameModeBase::StartGame()
 {
-	if (3 == InStrikeCount)
-	{
-		AMP_BaseBallPlayerState* MPPS = InChattingPlayerController->GetPlayerState<AMP_BaseBallPlayerState>();
-		for (const auto& MPPlayerController : AllPlayerControllers)
-		{
-			if (IsValid(MPPS) == true)
-			{
-				FString CombinedMessageString = MPPS->PlayerNameString + TEXT(" has won the game.");
-				MPPlayerController->NotificationText = FText::FromString(CombinedMessageString);
-			}
-		}
-
-		ResetGame();
-	}
-}
-
-void AMP_BaseBallGameModeBase::CheckStartGame()
-{
-	for (const auto& MPPlayerController : AllPlayerControllers)
-	{
-		if (!IsValid(MPPlayerController))
-		{
-			continue;
-		}
-
-		AMP_BaseBallPlayerState* MPPlayerState = MPPlayerController->GetPlayerState<AMP_BaseBallPlayerState>();
-		if (!IsValid(MPPlayerState))
-		{
-			continue;
-		}     
-
-		if (MPPlayerState->GetPlayerGameState() != EGameState::Ready)
-		{
-			FString CombinedMessageString =  TEXT(" Return ") ;
-			MPPlayerController->ClientRPCPrintChatMessageString(CombinedMessageString);
-			return;
-		}
-	}
-
 	AMP_BaseBallGameStateBase* MPGameStateBase = GetGameState<AMP_BaseBallGameStateBase>();
 	if (IsValid(MPGameStateBase) == true)
 	{
@@ -250,15 +220,86 @@ void AMP_BaseBallGameModeBase::CheckStartGame()
 			{
 				continue;
 			}
-
+			FString PlayerSecretNumber = GenerateSecretNumber();
+			SecretNumberStrings.Emplace(MPPlayerController, PlayerSecretNumber);
+			MPPlayerController->ClientRPCPrintChatMessageString(PlayerSecretNumber);
 			MPPlayerState->SetGamePlay();
 		}
 
 		const int32 NumPlayers = AllPlayerControllers.Num();
 		CurrentTurnIndex = 0;
+		CurrentGuessCount = 0;
 		SetPlayerTurn(AllPlayerControllers[CurrentTurnIndex]->GetPlayerState<AMP_BaseBallPlayerState>());
 	}
+}
 
+bool AMP_BaseBallGameModeBase::JudgeGame(AMP_BaseBallPlayerController* InChattingPlayerController, int InStrikeCount)
+{
+	AMP_BaseBallPlayerState* MPPS = InChattingPlayerController->GetPlayerState<AMP_BaseBallPlayerState>();
+	if (MPPS->PlayerGameState == EGameState::None)
+	{
+		for (const auto& MPPlayerController : AllPlayerControllers)
+		{
+			AMP_BaseBallPlayerState* MPPlayerState = MPPlayerController->GetPlayerState<AMP_BaseBallPlayerState>();
+			if (IsValid(MPPlayerState) == true)
+			{
+				if (MPPlayerState->PlayerGameState != EGameState::None)
+					return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool CheckEndGame = true;
+
+	if (3 == InStrikeCount)
+	{
+		MPPS->SetEndPlay();
+		for (const auto& MPPlayerController : AllPlayerControllers)
+		{
+			if (IsValid(MPPS) == true)
+			{
+				FString CombinedMessageString = MPPS->PlayerNameString + TEXT(" has End the game.");
+				MPPlayerController->NotificationText = FText::FromString(CombinedMessageString);
+			}
+
+			AMP_BaseBallPlayerState* MPPlayerState = MPPlayerController->GetPlayerState<AMP_BaseBallPlayerState>();
+			if (IsValid(MPPlayerState) == true)
+			{
+				if (CheckEndGame && MPPlayerState->PlayerGameState != EGameState::None)
+					CheckEndGame = false;
+			}
+		}
+	}
+
+	return CheckEndGame;
+}
+
+void AMP_BaseBallGameModeBase::CheckStartGame()
+{
+	for (const auto& MPPlayerController : AllPlayerControllers)
+	{
+		if (!IsValid(MPPlayerController))
+		{
+			continue;
+		}
+
+		AMP_BaseBallPlayerState* MPPlayerState = MPPlayerController->GetPlayerState<AMP_BaseBallPlayerState>();
+		if (!IsValid(MPPlayerState))
+		{
+			continue;
+		}
+
+		if (MPPlayerState->GetPlayerGameState() != EGameState::Ready)
+		{
+			FString CombinedMessageString = TEXT(" Return ");
+			MPPlayerController->ClientRPCPrintChatMessageString(CombinedMessageString);
+			return;
+		}
+	}
+
+	StartGame();
 }
 
 void AMP_BaseBallGameModeBase::CountDown()
@@ -306,10 +347,10 @@ void AMP_BaseBallGameModeBase::SetPlayerTurn(AMP_BaseBallPlayerState* PlayerStat
 			}
 
 			MPPlayerController->SetTurnCount(Count);
-			auto CurrentPlayer = MPGameStateBase->GetCurrentPlayer();
-			if (!IsValid(CurrentPlayer))
+			AMP_BaseBallPlayerState* BaseBallPlayerState = MPPlayerController->GetPlayerState<AMP_BaseBallPlayerState>();
+			if (IsValid(BaseBallPlayerState))
 			{
-				FString CombinedMessageString = CurrentPlayer->PlayerNameString + TEXT("'s Turn");
+				FString CombinedMessageString = BaseBallPlayerState->PlayerNameString + TEXT("'s Turn");
 				MPPlayerController->NotificationText = FText::FromString(CombinedMessageString);
 			}
 		}
@@ -321,5 +362,14 @@ void AMP_BaseBallGameModeBase::SetPlayerTurn(AMP_BaseBallPlayerState* PlayerStat
 			1.0f,
 			true
 		);
+	}
+}
+
+void AMP_BaseBallGameModeBase::IncreaseGuessCount(AMP_BaseBallPlayerController* InChattingPlayerController)
+{
+	AMP_BaseBallPlayerState* BaseBallPlayerState = InChattingPlayerController->GetPlayerState<AMP_BaseBallPlayerState>();
+	if (IsValid(BaseBallPlayerState) == true)
+	{
+		BaseBallPlayerState->CurrentGuessCount++;
 	}
 }

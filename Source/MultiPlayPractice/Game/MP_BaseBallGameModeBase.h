@@ -32,19 +32,26 @@ public:
 
 	void ResetGame();
 
-	void JudgeGame(AMP_BaseBallPlayerController* InChattingPlayerController, int InStrikeCount);
+	void StartGame();
+
+	bool JudgeGame(AMP_BaseBallPlayerController* InChattingPlayerController, int InStrikeCount);
 
 	void CheckStartGame();
 
 	void CountDown();
 
 	void SetPlayerTurn(AMP_BaseBallPlayerState* PlayerState);
+
+	void IncreaseGuessCount(AMP_BaseBallPlayerController* InChattingPlayerController);
+
 protected:
-	FString SecretNumberString;
+	TMap< TObjectPtr<AMP_BaseBallPlayerController>, FString> SecretNumberStrings;
 
 	TArray<TObjectPtr<AMP_BaseBallPlayerController>> AllPlayerControllers;
 
 	FTimerHandle TurnCountHandler; 
 
 	int32 CurrentTurnIndex;
+
+	int32 CurrentGuessCount;
 };
