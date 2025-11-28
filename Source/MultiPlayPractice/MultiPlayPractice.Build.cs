@@ -1,6 +1,7 @@
 ﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
+using UnrealBuildTool.Rules;
 
 public class MultiPlayPractice : ModuleRules
 {
@@ -15,7 +16,10 @@ public class MultiPlayPractice : ModuleRules
 			"UMG", "Slate", "SlateCore",
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { });
+		PrivateDependencyModuleNames.AddRange(new string[] 
+		{
+			"GameplayAbilities", "GameplayTags", "GameplayTasks",
+		});
 
 		PublicIncludePaths.AddRange(new string[] { "MultiPlayPractice" });
 	}
